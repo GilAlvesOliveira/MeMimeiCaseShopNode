@@ -1,29 +1,28 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose from 'mongoose';
 
-export interface IPedido extends Document {
+export interface IPedido extends mongoose.Document {
   usuarioId: string;
-  produtos: { produtoId: string; quantidade: number; precoUnitario: number }[];
+  produtos: { produtoId: string; quantidade: number; precoUnitario: number; _id: string }[];
   total: number;
   status: string;
-  pixCode?: string;
-  pixQrCode?: string;
   criadoEm: Date;
+  paymentId?: string;
 }
 
-const PedidoSchema = new Schema<IPedido>({
+const PedidoSchema = new mongoose.Schema({
   usuarioId: { type: String, required: true },
   produtos: [
     {
       produtoId: { type: String, required: true },
       quantidade: { type: Number, required: true },
       precoUnitario: { type: Number, required: true },
+      _id: false,
     },
   ],
   total: { type: Number, required: true },
-  status: { type: String, required: true, default: 'pendente' },
-  pixCode: { type: String },
-  pixQrCode: { type: String },
+  status: { type: String, default: 'pendente' },
   criadoEm: { type: Date, default: Date.now },
+  paymentId: { type: String, default: null },
 });
 
-export const PedidoModel = mongoose.models.Pedido || mongoose.model<IPedido>('pedidos', PedidoSchema);
+export const PedidoModel = (mongoose.models.Pedidos as mongoose.Model<IPedido>) || mongoose.model<IPedido>('Pedidos', PedidoSchema);
