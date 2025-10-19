@@ -16,4 +16,4 @@ const UsuarioSchema = new Schema<IUsuario>({
   role: { type: String, enum: ['admin', 'customer'], default: 'customer' },
 });
 
-export const UsuarioModel = mongoose.models.Usuario || mongoose.model<IUsuario>('Usuario', UsuarioSchema);
+export const UsuarioModel = mongoose.models.Usuario || mongoose.model<IUsuario>('usuarios', UsuarioSchema);

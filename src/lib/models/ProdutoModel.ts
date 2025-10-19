@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IProduto extends Document {
+  _id: mongoose.Types.ObjectId; // Explicitamente definir _id como ObjectId
   nome: string;
   descricao: string;
   preco: number;
@@ -22,4 +23,4 @@ const ProdutoSchema = new Schema<IProduto>({
   modelo: { type: String, required: true },
 });
 
-export const ProdutoModel = mongoose.models.Produto || mongoose.model<IProduto>('Produto', ProdutoSchema);
+export const ProdutoModel = mongoose.models.Produto || mongoose.model<IProduto>('produtos', ProdutoSchema);
