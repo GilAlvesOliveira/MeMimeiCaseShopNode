@@ -1,4 +1,3 @@
-// src/pages/api/mercado_pago/preference.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { RespostaPadraoMsg } from '../../../lib/types/RespostaPadraoMsg';
 import { conectarMongoDB } from '../../../lib/middlewares/conectarMongoDB';
@@ -28,23 +27,24 @@ const handler = nc()
         return res.status(400).json({ erro: 'Total e pedidoId são obrigatórios' });
       }
 
-      // Email do usuário (autenticado)
+      // E-mail do pagador (do usuário logado, vindo do middleware)
       const email = req.user?.email || req.body.email;
       if (!email) {
         return res.status(400).json({ erro: 'Email do usuário não encontrado' });
       }
 
-      // IMPORTANTE: webhook deve apontar para o DOMÍNIO DO BACKEND
-      const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.NEXT_PUBLIC_URL || '';
-      if (!backendBase) {
-        return res.status(500).json({ erro: 'BACKEND_PUBLIC_URL não configurado' });
+      // Base pública do frontend/backend para montar URLs de retorno e webhook
+      const baseUrl = (process.env.NEXT_PUBLIC_URL || '').replace(/\/$/, '');
+      if (!baseUrl) {
+        return res.status(500).json({ erro: 'NEXT_PUBLIC_URL não configurado' });
       }
 
+      // Preferência de pagamento (Checkout Pro) com o ID do pedido como query param
       const preferenceData = {
         body: {
           items: [
             {
-              id: `${pedidoId}`,
+              id: String(pedidoId),
               title: `Pedido #${pedidoId}`,
               unit_price: Number(total),
               quantity: 1,
@@ -52,15 +52,14 @@ const handler = nc()
             },
           ],
           payer: { email },
-          external_reference: pedidoId,
+          external_reference: String(pedidoId), // usado no webhook para identificar o pedido
           auto_return: 'approved',
           back_urls: {
-            success: `${process.env.NEXT_PUBLIC_URL}/sucesso`,
-            failure: `${process.env.NEXT_PUBLIC_URL}/falha`,
-            pending: `${process.env.NEXT_PUBLIC_URL}/pendente`,
+            success: `${baseUrl}/sucesso?pedido=${encodeURIComponent(String(pedidoId))}`,
+            failure: `${baseUrl}/falha?pedido=${encodeURIComponent(String(pedidoId))}`,
+            pending: `${baseUrl}/pendente?pedido=${encodeURIComponent(String(pedidoId))}`,
           },
-          // >>> AQUI: webhook no backend <<<
-          notification_url: `${backendBase}/api/webhooks/pagamento`,
+          notification_url: `${baseUrl}/api/webhooks/pagamento`,
         },
       };
 
@@ -76,7 +75,9 @@ const handler = nc()
       });
     } catch (e) {
       console.error('Erro ao criar preferência de pagamento:', e);
-      return res.status(500).json({ erro: 'Erro ao criar preferência de pagamento: ' + (e instanceof Error ? e.message : e) });
+      return res.status(500).json({
+        erro: 'Erro ao criar preferência de pagamento: ' + (e instanceof Error ? e.message : e),
+      });
     }
   });
 
