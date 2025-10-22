@@ -24,10 +24,11 @@ const handler = nc()
 
       const filtro = list.length ? { _id: { $in: list } } : {};
 
-      const usuarios = await UsuarioModel.find(filtro, { nome: 1, email: 1, avatar: 1 })
-        .limit(500);
+      const usuarios = await UsuarioModel.find(
+        filtro,
+        { nome: 1, email: 1, avatar: 1, telefone: 1, endereco: 1 }
+      ).limit(500);
 
-      // retorna [{ _id, nome, email, avatar }]
       return res.status(200).json(usuarios);
     } catch (e) {
       console.error('Erro /api/admin/usuarios:', e);

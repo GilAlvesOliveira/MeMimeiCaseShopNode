@@ -6,6 +6,8 @@ export interface IUsuario extends Document {
   senha: string;
   avatar?: string;
   role: 'admin' | 'customer';
+  telefone?: string; // novo
+  endereco?: string; // novo
 }
 
 const UsuarioSchema = new Schema<IUsuario>({
@@ -14,6 +16,8 @@ const UsuarioSchema = new Schema<IUsuario>({
   senha: { type: String, required: true },
   avatar: { type: String },
   role: { type: String, enum: ['admin', 'customer'], default: 'customer' },
+  telefone: { type: String, default: '' }, // novo
+  endereco: { type: String, default: '' }, // novo
 });
 
 export const UsuarioModel = mongoose.models.Usuario || mongoose.model<IUsuario>('usuarios', UsuarioSchema);

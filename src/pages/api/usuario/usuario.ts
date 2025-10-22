@@ -7,14 +7,13 @@ import nc from 'next-connect';
 import { upload, uploadImagemCosmic } from '../../../lib/services/uploadImagemCosmic';
 import { politicaCORS } from '../../../lib/middlewares/politicaCORS';
 
-// Estender NextApiRequest para incluir user e file
 interface UsuarioApiRequest extends NextApiRequest {
   user?: { id: string; email: string; role: string };
-  file?: any; // Temporário devido ao problema com multer
+  file?: any;
 }
 
 const handler = nc()
-  .use(upload.single('file')) // Middleware para upload de imagem
+  .use(upload.single('file'))
   .get(async (req: UsuarioApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
     try {
       if (!req.user) {
@@ -32,11 +31,10 @@ const handler = nc()
         return res.status(404).json({ erro: 'Usuário não encontrado' });
       }
 
-      // Remover senha e outros campos sensíveis
-      const { senha, ...usuarioSemSenha } = usuario.toObject();
+      const { senha, ...usuarioSemSenha } = (usuario as any).toObject();
       return res.status(200).json(usuarioSemSenha);
     } catch (e) {
-      console.error('Erro no GET /api/usuario:', e); // Log para depuração
+      console.error('Erro no GET /api/usuario:', e);
       return res.status(500).json({ erro: 'Erro ao obter dados do usuário' });
     }
   })
@@ -57,12 +55,12 @@ const handler = nc()
         return res.status(404).json({ erro: 'Usuário não encontrado' });
       }
 
-      const { nome } = req.body;
+      const { nome, telefone, endereco } = req.body as any;
+
       if (nome && nome.length < 2) {
         return res.status(400).json({ erro: 'Nome inválido' });
       }
 
-      // Upload da imagem (opcional)
       const image = await Promise.race([
         uploadImagemCosmic(req),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout no upload da imagem')), 10000)),
@@ -71,10 +69,14 @@ const handler = nc()
         return res.status(400).json({ erro: 'Falha ao fazer upload da imagem' });
       }
 
-      const usuarioASerAtualizado = {
+      const usuarioASerAtualizado: any = {
         nome: nome || usuario.nome,
         avatar: image?.media?.url || usuario.avatar,
       };
+
+      // campos novos (opcionais)
+      if (typeof telefone === 'string') usuarioASerAtualizado.telefone = telefone;
+      if (typeof endereco === 'string') usuarioASerAtualizado.endereco = endereco;
 
       await Promise.race([
         UsuarioModel.updateOne({ _id: userId }, usuarioASerAtualizado),
@@ -83,7 +85,7 @@ const handler = nc()
 
       return res.status(200).json({ msg: 'Usuário atualizado com sucesso' });
     } catch (e) {
-      console.error('Erro no PUT /api/usuario:', e); // Log para depuração
+      console.error('Erro no PUT /api/usuario:', e);
       return res.status(500).json({ erro: 'Erro ao atualizar usuário: ' + e });
     }
   });
