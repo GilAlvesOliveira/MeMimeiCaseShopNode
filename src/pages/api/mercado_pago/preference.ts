@@ -1,3 +1,4 @@
+// src/pages/api/mercado_pago/preference.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { RespostaPadraoMsg } from '../../../lib/types/RespostaPadraoMsg';
 import { conectarMongoDB } from '../../../lib/middlewares/conectarMongoDB';
@@ -27,13 +28,18 @@ const handler = nc()
         return res.status(400).json({ erro: 'Total e pedidoId são obrigatórios' });
       }
 
-      // Obter o email do usuário a partir do middleware de autenticação
-      const email = req.user?.email || req.body.email; // Fallback para teste
+      // Email do usuário (autenticado)
+      const email = req.user?.email || req.body.email;
       if (!email) {
         return res.status(400).json({ erro: 'Email do usuário não encontrado' });
       }
 
-      // Criar preferência de pagamento com Checkout Pro
+      // IMPORTANTE: webhook deve apontar para o DOMÍNIO DO BACKEND
+      const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.NEXT_PUBLIC_URL || '';
+      if (!backendBase) {
+        return res.status(500).json({ erro: 'BACKEND_PUBLIC_URL não configurado' });
+      }
+
       const preferenceData = {
         body: {
           items: [
@@ -46,14 +52,15 @@ const handler = nc()
             },
           ],
           payer: { email },
-          external_reference: pedidoId, // Para rastreamento no webhook
-          auto_return: 'approved', // Redireciona após aprovação
+          external_reference: pedidoId,
+          auto_return: 'approved',
           back_urls: {
-            success: `${process.env.NEXT_PUBLIC_URL}/sucesso`, // URL de sucesso (ajuste conforme necessário)
-            failure: `${process.env.NEXT_PUBLIC_URL}/falha`, // URL de falha
-            pending: `${process.env.NEXT_PUBLIC_URL}/pendente`, // URL de pendente
+            success: `${process.env.NEXT_PUBLIC_URL}/sucesso`,
+            failure: `${process.env.NEXT_PUBLIC_URL}/falha`,
+            pending: `${process.env.NEXT_PUBLIC_URL}/pendente`,
           },
-          notification_url: `${process.env.NEXT_PUBLIC_URL}/api/webhooks/pagamento`, // Webhook
+          // >>> AQUI: webhook no backend <<<
+          notification_url: `${backendBase}/api/webhooks/pagamento`,
         },
       };
 
