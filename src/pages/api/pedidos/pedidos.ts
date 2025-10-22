@@ -4,6 +4,7 @@ import { autenticar } from '../../../lib/middlewares/autenticar';
 import { conectarMongoDB } from '../../../lib/middlewares/conectarMongoDB';
 import { CarrinhoModel, ICarrinho } from '../../../lib/models/CarrinhoModel';
 import { ProdutoModel, IProduto } from '../../../lib/models/ProdutoModel';
+import { UsuarioModel } from '../../../lib/models/UsuarioModel';
 import mongoose from 'mongoose';
 import nc from 'next-connect';
 import { politicaCORS } from '../../../lib/middlewares/politicaCORS';
@@ -36,7 +37,8 @@ const PedidoSchema = new mongoose.Schema<IPedido>({
   criadoEm: { type: Date, default: Date.now },
 });
 
-export const PedidoModel = mongoose.models.Pedido || mongoose.model<IPedido>('pedidos', PedidoSchema);
+export const PedidoModel =
+  mongoose.models.Pedido || mongoose.model<IPedido>('pedidos', PedidoSchema);
 
 const handler = nc()
   .post(async (req: PedidoApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
@@ -104,21 +106,75 @@ const handler = nc()
         return res.status(401).json({ erro: 'Usuário não autenticado' });
       }
 
-      let pedidos;
+      let pedidos = await Promise.race([
+        PedidoModel.find({ ...(req.user.role === 'admin' ? {} : { usuarioId: req.user.id }) }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de pedidos')), 10000)),
+      ]) as IPedido[];
+
+      // Se for admin, enriquecer com dados do usuário e produtos
       if (req.user.role === 'admin') {
-        // Admins veem todos os pedidos
-        pedidos = await Promise.race([
-          PedidoModel.find({}),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de pedidos')), 10000)),
-        ]) as IPedido[];
-      } else {
-        // Clientes veem apenas seus próprios pedidos
-        pedidos = await Promise.race([
-          PedidoModel.find({ usuarioId: req.user.id }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de pedidos')), 10000)),
-        ]) as IPedido[];
+        const userIds = Array.from(new Set(pedidos.map(p => p.usuarioId)));
+        const [usuarios, produtos] = await Promise.all([
+          Promise.race([
+            UsuarioModel.find({ _id: { $in: userIds } }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de usuários')), 10000)),
+          ]),
+          Promise.race([
+            ProdutoModel.find({
+              _id: { $in: pedidos.flatMap(p => p.produtos.map(pi => pi.produtoId)) },
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de produtos')), 10000)),
+          ]),
+        ]) as [any[], IProduto[]];
+
+        const userMap = new Map(
+          (usuarios || []).map((u: any) => [
+            u._id.toString(),
+            {
+              id: u._id.toString(),
+              nome: u.nome,
+              email: u.email,
+              telefone: u.telefone || null,
+              endereco: u.endereco || null,
+            },
+          ])
+        );
+
+        const prodMap = new Map(
+          (produtos || []).map((pr: any) => [
+            pr._id.toString(),
+            {
+              nome: pr.nome,
+              imagem: pr.imagem,
+              modelo: pr.modelo,
+              cor: pr.cor,
+              preco: pr.preco,
+            },
+          ])
+        );
+
+        const enriquecidos = pedidos.map((p) => ({
+          _id: (p as any)._id,
+          usuarioId: p.usuarioId,
+          usuarioInfo: userMap.get(p.usuarioId) || null,
+          total: p.total,
+          status: p.status,
+          criadoEm: p.criadoEm,
+          produtos: (p.produtos || []).map((it) => {
+            const extra = prodMap.get(it.produtoId) || {};
+            return {
+              produtoId: it.produtoId,
+              quantidade: it.quantidade,
+              precoUnitario: it.precoUnitario,
+              ...extra, // nome, imagem, modelo, cor, preco
+            };
+          }),
+        }));
+
+        return res.status(200).json(enriquecidos);
       }
 
+      // Cliente comum: retorna como está
       return res.status(200).json(pedidos);
     } catch (e) {
       console.error('Erro ao listar pedidos:', e);
