@@ -14,23 +14,63 @@ interface ProdutoApiRequest extends NextApiRequest {
   file?: any; // Temporário devido ao problema com multer
 }
 
-const handler = nc()
-  .get(async (req: ProdutoApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
+const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
+  /**
+   * GET /api/products/produtos
+   * - Lista todos os produtos, inclusive com estoque = 0
+   * - Suporta busca opcional (?q=) em vários campos
+   * - Suporta filtro opcional (?somenteDisponiveis=1) para listar apenas estoque > 0
+   */
+  .get(async (req, res) => {
     try {
+      const { q, somenteDisponiveis } = req.query;
+
+      const filtro: any = {};
+
+      if (typeof q === 'string' && q.trim().length > 0) {
+        const term = q.trim();
+        filtro.$or = [
+          { nome:      { $regex: term, $options: 'i' } },
+          { modelo:    { $regex: term, $options: 'i' } },
+          { categoria: { $regex: term, $options: 'i' } },
+          { cor:       { $regex: term, $options: 'i' } },
+          { descricao: { $regex: term, $options: 'i' } },
+        ];
+      }
+
+      if (String(somenteDisponiveis || '') === '1') {
+        filtro.estoque = { $gt: 0 };
+      }
+
       const produtos = await Promise.race([
-        ProdutoModel.find(),
+        ProdutoModel.find(filtro).sort({ nome: 1 }).limit(500),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de produtos')), 10000)),
       ]);
+
       return res.status(200).json(produtos);
     } catch (e) {
+      console.error('Erro ao listar produtos:', e);
       return res.status(500).json({ erro: 'Erro ao listar produtos' });
     }
   })
-  .use(async (req: ProdutoApiRequest, res: NextApiResponse, next: () => void) => {
-    await autenticar((req: ProdutoApiRequest, res: NextApiResponse) => Promise.resolve(next()))(req, res);
+
+  /**
+   * A partir daqui, autenticação obrigatória (POST/PUT/DELETE)
+   * Usamos o middleware de autenticação apenas nas rotas de escrita.
+   */
+  .use(async (req, res, next) => {
+    // Encapsula o middleware autenticar para funcionar no next-connect
+    await autenticar((r: ProdutoApiRequest, s: NextApiResponse) => Promise.resolve(next()))(req, res);
   })
+
   .use(upload.single('file')) // Middleware para upload de imagem
-  .post(async (req: ProdutoApiRequest, res: NextApiResponse<RespostaPadraoMsg>) => {
+
+  /**
+   * POST /api/products/produtos
+   * - Cria produto (apenas admin)
+   * - Permite estoque = 0
+   */
+  .post(async (req, res) => {
     try {
       // Verificar se o usuário é admin
       if (!req.user || req.user.role !== 'admin') {
@@ -46,10 +86,11 @@ const handler = nc()
       if (!produto.descricao || produto.descricao.length < 5) {
         return res.status(400).json({ erro: 'Descrição inválida' });
       }
-      if (!produto.preco || produto.preco <= 0) {
+      if (produto.preco == null || produto.preco <= 0) {
         return res.status(400).json({ erro: 'Preço inválido' });
       }
-      if (!produto.estoque || produto.estoque < 0) {
+      // PERMITE 0 -> usa == null para aceitar zero
+      if (produto.estoque == null || produto.estoque < 0) {
         return res.status(400).json({ erro: 'Estoque inválido' });
       }
       if (!produto.categoria || produto.categoria.length < 2) {
@@ -75,7 +116,7 @@ const handler = nc()
         nome: produto.nome,
         descricao: produto.descricao,
         preco: produto.preco,
-        estoque: produto.estoque,
+        estoque: produto.estoque, // pode ser 0
         imagem: image?.media?.url,
         categoria: produto.categoria,
         cor: produto.cor,
@@ -88,10 +129,17 @@ const handler = nc()
       ]);
       return res.status(200).json({ msg: 'Produto criado com sucesso' });
     } catch (e) {
+      console.error('Erro ao criar produto:', e);
       return res.status(500).json({ erro: 'Erro ao criar produto' });
     }
   })
-  .put(async (req: ProdutoApiRequest, res: NextApiResponse<RespostaPadraoMsg>) => {
+
+  /**
+   * PUT /api/products/produtos?_id=<id>
+   * - Atualiza produto (apenas admin)
+   * - Usa nullish coalescing (??) para não perder zeros
+   */
+  .put(async (req, res) => {
     try {
       // Verificar se o usuário é admin
       if (!req.user || req.user.role !== 'admin') {
@@ -115,25 +163,25 @@ const handler = nc()
       const produto = req.body as Partial<ProdutoRequisicao>;
 
       // Validação dos campos fornecidos
-      if (produto.nome && produto.nome.length < 2) {
+      if (produto.nome != null && produto.nome.length < 2) {
         return res.status(400).json({ erro: 'Nome inválido' });
       }
-      if (produto.descricao && produto.descricao.length < 5) {
+      if (produto.descricao != null && produto.descricao.length < 5) {
         return res.status(400).json({ erro: 'Descrição inválida' });
       }
-      if (produto.preco && produto.preco <= 0) {
+      if (produto.preco != null && produto.preco <= 0) {
         return res.status(400).json({ erro: 'Preço inválido' });
       }
-      if (produto.estoque && produto.estoque < 0) {
+      if (produto.estoque != null && produto.estoque < 0) {
         return res.status(400).json({ erro: 'Estoque inválido' });
       }
-      if (produto.categoria && produto.categoria.length < 2) {
+      if (produto.categoria != null && produto.categoria.length < 2) {
         return res.status(400).json({ erro: 'Categoria inválida' });
       }
-      if (produto.cor && produto.cor.length < 2) {
+      if (produto.cor != null && produto.cor.length < 2) {
         return res.status(400).json({ erro: 'Cor inválida' });
       }
-      if (produto.modelo && produto.modelo.length < 2) {
+      if (produto.modelo != null && produto.modelo.length < 2) {
         return res.status(400).json({ erro: 'Modelo inválido' });
       }
 
@@ -147,14 +195,14 @@ const handler = nc()
       }
 
       const produtoASerAtualizado = {
-        nome: produto.nome || produtoExistente.nome,
-        descricao: produto.descricao || produtoExistente.descricao,
-        preco: produto.preco || produtoExistente.preco,
-        estoque: produto.estoque || produtoExistente.estoque,
-        imagem: image?.media?.url || produtoExistente.imagem,
-        categoria: produto.categoria || produtoExistente.categoria,
-        cor: produto.cor || produtoExistente.cor,
-        modelo: produto.modelo || produtoExistente.modelo,
+        nome: produto.nome ?? produtoExistente.nome,
+        descricao: produto.descricao ?? produtoExistente.descricao,
+        preco: produto.preco ?? produtoExistente.preco,       // aceita 0 usando ??
+        estoque: produto.estoque ?? produtoExistente.estoque, // aceita 0 usando ??
+        imagem: image?.media?.url ?? produtoExistente.imagem,
+        categoria: produto.categoria ?? produtoExistente.categoria,
+        cor: produto.cor ?? produtoExistente.cor,
+        modelo: produto.modelo ?? produtoExistente.modelo,
       };
 
       await Promise.race([
@@ -164,10 +212,16 @@ const handler = nc()
 
       return res.status(200).json({ msg: 'Produto atualizado com sucesso' });
     } catch (e) {
+      console.error('Erro ao atualizar produto:', e);
       return res.status(500).json({ erro: 'Erro ao atualizar produto' });
     }
   })
-  .delete(async (req: ProdutoApiRequest, res: NextApiResponse<RespostaPadraoMsg>) => {
+
+  /**
+   * DELETE /api/products/produtos?_id=<id>
+   * - Exclui produto (apenas admin)
+   */
+  .delete(async (req, res) => {
     try {
       // Verificar se o usuário é admin
       if (!req.user || req.user.role !== 'admin') {
@@ -195,6 +249,7 @@ const handler = nc()
 
       return res.status(200).json({ msg: 'Produto excluído com sucesso' });
     } catch (e) {
+      console.error('Erro ao excluir produto:', e);
       return res.status(500).json({ erro: 'Erro ao excluir produto' });
     }
   });

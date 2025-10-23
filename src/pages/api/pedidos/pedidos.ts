@@ -9,14 +9,12 @@ import { UsuarioModel } from '../../../lib/models/UsuarioModel';
 import nc from 'next-connect';
 import { politicaCORS } from '../../../lib/middlewares/politicaCORS';
 
-// Estender NextApiRequest para incluir user
 interface PedidoApiRequest extends NextApiRequest {
   user?: { id: string; email: string; role: string };
 }
 
 const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
-  // Criar pedido a partir do carrinho (cliente logado)
   .post(async (req, res) => {
     try {
       if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
@@ -29,6 +27,23 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
       const produtos = (await ProdutoModel.find({
         _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
       })) as IProduto[];
+
+      // VALIDAÇÃO DE ESTOQUE (para cada item do carrinho)
+      for (const item of carrinho.produtos) {
+        const prod = produtos.find((pp) => pp._id.toString() === item.produtoId);
+        if (!prod) {
+          return res.status(400).json({ erro: `Produto ${item.produtoId} não encontrado` });
+        }
+        const estoqueAtual = Number(prod.estoque ?? 0) || 0;
+        if (estoqueAtual <= 0) {
+          return res.status(400).json({ erro: `Produto "${prod.nome}" está esgotado` });
+        }
+        if (item.quantidade > estoqueAtual) {
+          return res.status(400).json({
+            erro: `Quantidade de "${prod.nome}" indisponível (em estoque: ${estoqueAtual})`,
+          });
+        }
+      }
 
       const pedido = {
         usuarioId: req.user.id,
@@ -52,7 +67,6 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
       const novo = (await PedidoModel.create(pedido)) as IPedido;
 
-      // limpar carrinho
       await CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] });
 
       return res.status(200).json({
@@ -66,7 +80,6 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
     }
   })
 
-  // Listar pedidos (admin vê todos; cliente vê os seus)
   .get(async (req, res) => {
     try {
       if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
@@ -76,7 +89,6 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
       const pedidos = (await PedidoModel.find(filtro).sort({ criadoEm: -1 })) as IPedido[];
 
-      // enriquecer: nome do usuário + dados do produto
       const usuarioIds = Array.from(new Set(pedidos.map((p) => p.usuarioId)));
       const usuarios = await UsuarioModel.find({ _id: { $in: usuarioIds } });
       const userMap = new Map(usuarios.map((u) => [u._id.toString(), u]));
@@ -126,7 +138,6 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
     }
   })
 
-  // ADMIN: atualizar status de envio (enviado true/false)
   .put(async (req, res) => {
     try {
       if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
