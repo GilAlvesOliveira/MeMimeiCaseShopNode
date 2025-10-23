@@ -4,8 +4,8 @@ import { autenticar } from '../../../lib/middlewares/autenticar';
 import { conectarMongoDB } from '../../../lib/middlewares/conectarMongoDB';
 import { CarrinhoModel, ICarrinho } from '../../../lib/models/CarrinhoModel';
 import { ProdutoModel, IProduto } from '../../../lib/models/ProdutoModel';
+import { PedidoModel, IPedido } from '../../../lib/models/PedidoModel';
 import { UsuarioModel } from '../../../lib/models/UsuarioModel';
-import mongoose from 'mongoose';
 import nc from 'next-connect';
 import { politicaCORS } from '../../../lib/middlewares/politicaCORS';
 
@@ -14,171 +14,148 @@ interface PedidoApiRequest extends NextApiRequest {
   user?: { id: string; email: string; role: string };
 }
 
-// Interface do Pedido
-export interface IPedido extends mongoose.Document {
-  usuarioId: string;
-  produtos: { produtoId: string; quantidade: number; precoUnitario: number }[];
-  total: number;
-  status: string;
-  criadoEm: Date;
-}
+const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
-const PedidoSchema = new mongoose.Schema<IPedido>({
-  usuarioId: { type: String, required: true },
-  produtos: [
-    {
-      produtoId: { type: String, required: true },
-      quantidade: { type: Number, required: true },
-      precoUnitario: { type: Number, required: true },
-    },
-  ],
-  total: { type: Number, required: true },
-  status: { type: String, required: true, default: 'pendente' },
-  criadoEm: { type: Date, default: Date.now },
-});
-
-export const PedidoModel =
-  mongoose.models.Pedido || mongoose.model<IPedido>('pedidos', PedidoSchema);
-
-const handler = nc()
-  .post(async (req: PedidoApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
+  // Criar pedido a partir do carrinho (cliente logado)
+  .post(async (req, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ erro: 'Usuário não autenticado' });
-      }
+      if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-      const carrinho = await Promise.race([
-        CarrinhoModel.findOne({ usuarioId: req.user.id }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca do carrinho')), 10000)),
-      ]) as ICarrinho | null;
-
+      const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
       if (!carrinho || carrinho.produtos.length === 0) {
         return res.status(400).json({ erro: 'Carrinho vazio' });
       }
 
-      const produtos = await Promise.race([
-        ProdutoModel.find({ _id: { $in: carrinho.produtos.map(p => p.produtoId) } }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca dos produtos')), 10000)),
-      ]) as IProduto[];
+      const produtos = (await ProdutoModel.find({
+        _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
+      })) as IProduto[];
 
       const pedido = {
         usuarioId: req.user.id,
-        produtos: carrinho.produtos.map((p: { produtoId: string; quantidade: number }) => {
-          const produto = produtos.find((prod: IProduto) => prod._id.toString() === p.produtoId);
+        produtos: carrinho.produtos.map((p) => {
+          const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
           return {
             produtoId: p.produtoId,
             quantidade: p.quantidade,
-            precoUnitario: produto?.preco || 0,
+            precoUnitario: prod?.preco || 0,
           };
         }),
-        total: carrinho.produtos.reduce((sum: number, p: { produtoId: string; quantidade: number }) => {
-          const produto = produtos.find((prod: IProduto) => prod._id.toString() === p.produtoId);
-          return sum + (produto?.preco || 0) * p.quantidade;
+        total: carrinho.produtos.reduce((sum, p) => {
+          const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
+          return sum + (prod?.preco || 0) * p.quantidade;
         }, 0),
         status: 'pendente',
         criadoEm: new Date(),
+        enviado: false,
+        enviadoEm: null,
       };
 
-      const novoPedido = await Promise.race([
-        PedidoModel.create(pedido),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao criar pedido')), 10000)),
-      ]) as IPedido;
+      const novo = (await PedidoModel.create(pedido)) as IPedido;
 
-      // Limpa o carrinho após criar o pedido
-      await Promise.race([
-        CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao limpar carrinho')), 10000)),
-      ]);
+      // limpar carrinho
+      await CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] });
 
       return res.status(200).json({
         msg: 'Pedido criado com sucesso',
-        pedidoId: novoPedido._id,
+        pedidoId: novo._id,
         total: pedido.total,
       });
     } catch (e) {
       console.error('Erro ao criar pedido:', e);
-      return res.status(500).json({ erro: 'Erro ao criar pedido: ' + (e instanceof Error ? e.message : e) });
+      return res.status(500).json({ erro: 'Erro ao criar pedido' });
     }
   })
-  .get(async (req: PedidoApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
+
+  // Listar pedidos (admin vê todos; cliente vê os seus)
+  .get(async (req, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ erro: 'Usuário não autenticado' });
-      }
+      if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-      let pedidos = await Promise.race([
-        PedidoModel.find({ ...(req.user.role === 'admin' ? {} : { usuarioId: req.user.id }) }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de pedidos')), 10000)),
-      ]) as IPedido[];
+      const isAdmin = String(req.user.role || '').toLowerCase() === 'admin';
+      const filtro = isAdmin ? {} : { usuarioId: req.user.id };
 
-      // Se for admin, enriquecer com dados do usuário e produtos
-      if (req.user.role === 'admin') {
-        const userIds = Array.from(new Set(pedidos.map(p => p.usuarioId)));
-        const [usuarios, produtos] = await Promise.all([
-          Promise.race([
-            UsuarioModel.find({ _id: { $in: userIds } }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de usuários')), 10000)),
-          ]),
-          Promise.race([
-            ProdutoModel.find({
-              _id: { $in: pedidos.flatMap(p => p.produtos.map(pi => pi.produtoId)) },
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca de produtos')), 10000)),
-          ]),
-        ]) as [any[], IProduto[]];
+      const pedidos = (await PedidoModel.find(filtro).sort({ criadoEm: -1 })) as IPedido[];
 
-        const userMap = new Map(
-          (usuarios || []).map((u: any) => [
-            u._id.toString(),
-            {
-              id: u._id.toString(),
-              nome: u.nome,
-              email: u.email,
-              telefone: u.telefone || null,
-              endereco: u.endereco || null,
-            },
-          ])
-        );
+      // enriquecer: nome do usuário + dados do produto
+      const usuarioIds = Array.from(new Set(pedidos.map((p) => p.usuarioId)));
+      const usuarios = await UsuarioModel.find({ _id: { $in: usuarioIds } });
+      const userMap = new Map(usuarios.map((u) => [u._id.toString(), u]));
 
-        const prodMap = new Map(
-          (produtos || []).map((pr: any) => [
-            pr._id.toString(),
-            {
-              nome: pr.nome,
-              imagem: pr.imagem,
-              modelo: pr.modelo,
-              cor: pr.cor,
-              preco: pr.preco,
-            },
-          ])
-        );
+      const produtoIds = Array.from(
+        new Set(pedidos.flatMap((p) => p.produtos.map((i) => i.produtoId)))
+      );
+      const prods = await ProdutoModel.find({ _id: { $in: produtoIds } });
+      const prodMap = new Map(prods.map((x) => [x._id.toString(), x]));
 
-        const enriquecidos = pedidos.map((p) => ({
-          _id: (p as any)._id,
-          usuarioId: p.usuarioId,
-          usuarioInfo: userMap.get(p.usuarioId) || null,
-          total: p.total,
-          status: p.status,
-          criadoEm: p.criadoEm,
-          produtos: (p.produtos || []).map((it) => {
-            const extra = prodMap.get(it.produtoId) || {};
-            return {
-              produtoId: it.produtoId,
-              quantidade: it.quantidade,
-              precoUnitario: it.precoUnitario,
-              ...extra, // nome, imagem, modelo, cor, preco
-            };
-          }),
-        }));
+      const resp = pedidos.map((p) => ({
+        _id: p._id,
+        usuarioId: p.usuarioId,
+        usuarioInfo: (() => {
+          const u: any = userMap.get(p.usuarioId);
+          if (!u) return {};
+          return {
+            nome: u.nome,
+            email: u.email,
+            telefone: u.telefone || '',
+            endereco: u.endereco || '',
+          };
+        })(),
+        produtos: p.produtos.map((it) => {
+          const pd: any = prodMap.get(it.produtoId);
+          return {
+            produtoId: it.produtoId,
+            quantidade: it.quantidade,
+            precoUnitario: it.precoUnitario,
+            nome: pd?.nome || undefined,
+            modelo: pd?.modelo || undefined,
+            cor: pd?.cor || undefined,
+            imagem: pd?.imagem || undefined,
+          };
+        }),
+        total: p.total,
+        status: p.status,
+        criadoEm: p.criadoEm,
+        enviado: p.enviado || false,
+        enviadoEm: p.enviadoEm || null,
+      }));
 
-        return res.status(200).json(enriquecidos);
-      }
-
-      // Cliente comum: retorna como está
-      return res.status(200).json(pedidos);
+      return res.status(200).json(resp);
     } catch (e) {
       console.error('Erro ao listar pedidos:', e);
-      return res.status(500).json({ erro: 'Erro ao listar pedidos: ' + (e instanceof Error ? e.message : e) });
+      return res.status(500).json({ erro: 'Erro ao listar pedidos' });
+    }
+  })
+
+  // ADMIN: atualizar status de envio (enviado true/false)
+  .put(async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
+      if (String(req.user.role || '').toLowerCase() !== 'admin') {
+        return res.status(403).json({ erro: 'Acesso negado: somente administradores' });
+      }
+
+      const { _id } = req.query;
+      if (!_id || typeof _id !== 'string') {
+        return res.status(400).json({ erro: 'ID do pedido inválido' });
+      }
+
+      const { enviado } = req.body as { enviado?: boolean };
+      if (typeof enviado !== 'boolean') {
+        return res.status(400).json({ erro: 'Campo "enviado" (boolean) é obrigatório' });
+      }
+
+      const setObj: any = { enviado };
+      setObj.enviadoEm = enviado ? new Date() : null;
+
+      const upd = await PedidoModel.updateOne({ _id }, { $set: setObj });
+      if (upd.modifiedCount === 0) {
+        return res.status(404).json({ erro: 'Pedido não encontrado ou sem alterações' });
+      }
+
+      return res.status(200).json({ msg: 'Status de envio atualizado' });
+    } catch (e) {
+      console.error('Erro ao atualizar envio:', e);
+      return res.status(500).json({ erro: 'Erro ao atualizar envio' });
     }
   });
 
