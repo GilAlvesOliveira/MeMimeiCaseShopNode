@@ -7,15 +7,14 @@ import nc from 'next-connect';
 import { upload, uploadImagemCosmic } from '../../../lib/services/uploadImagemCosmic';
 import { politicaCORS } from '../../../lib/middlewares/politicaCORS';
 
-// Estender NextApiRequest para incluir user e file
 interface UsuarioApiRequest extends NextApiRequest {
   user?: { id: string; email: string; role: string };
-  file?: any; // Temporário devido ao problema com multer
+  file?: any; 
 }
 
 const handler = nc()
   .use(upload.single('file')) // Middleware para upload de imagem
-  .get(async (req: UsuarioApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
+   .get(async (req: UsuarioApiRequest, res: NextApiResponse<RespostaPadraoMsg | any>) => {
     try {
       if (!req.user) {
         return res.status(401).json({ erro: 'Usuário não autenticado' });
@@ -48,19 +47,16 @@ const handler = nc()
 
       const userId = req.user.id;
 
-      const usuario = await Promise.race([
-        UsuarioModel.findById(userId),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na busca do usuário')), 10000)),
-      ]);
-
+      const usuario = await UsuarioModel.findById(userId);
       if (!usuario) {
         return res.status(404).json({ erro: 'Usuário não encontrado' });
       }
 
-      const { nome, telefone, endereco } = req.body as Partial<{
+      const { nome, telefone, endereco, cep } = req.body as Partial<{
         nome: string;
         telefone: string;
         endereco: string;
+        cep: string;  // Permitir atualização do CEP
       }>;
 
       if (nome && nome.length < 2) {
@@ -77,18 +73,16 @@ const handler = nc()
       }
 
       const usuarioASerAtualizado: any = {
-        nome: nome || (usuario as any).nome,
-        avatar: image?.media?.url || (usuario as any).avatar,
+        nome: nome || usuario.nome,
+        avatar: image?.media?.url || usuario.avatar,
       };
 
       // Campos opcionais (se vierem, salvam; senão mantém)
       if (typeof telefone === 'string') usuarioASerAtualizado.telefone = telefone;
       if (typeof endereco === 'string') usuarioASerAtualizado.endereco = endereco;
+      if (typeof cep === 'string') usuarioASerAtualizado.cep = cep;  // Atualizar o campo CEP
 
-      await Promise.race([
-        UsuarioModel.updateOne({ _id: userId }, usuarioASerAtualizado),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao atualizar usuário')), 10000)),
-      ]);
+      await UsuarioModel.updateOne({ _id: userId }, usuarioASerAtualizado);
 
       return res.status(200).json({ msg: 'Usuário atualizado com sucesso' });
     } catch (e) {

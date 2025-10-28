@@ -103,6 +103,20 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
         return res.status(400).json({ erro: 'Modelo inválido' });
       }
 
+      // Validação das novas dimensões
+      if (produto.peso != null && produto.peso <= 0) {
+        return res.status(400).json({ erro: 'Peso inválido' });
+      }
+      if (produto.largura != null && produto.largura <= 0) {
+        return res.status(400).json({ erro: 'Largura inválida' });
+      }
+      if (produto.altura != null && produto.altura <= 0) {
+        return res.status(400).json({ erro: 'Altura inválida' });
+      }
+      if (produto.comprimento != null && produto.comprimento <= 0) {
+        return res.status(400).json({ erro: 'Comprimento inválido' });
+      }
+
       // Upload da imagem (opcional)
       const image = await Promise.race([
         uploadImagemCosmic(req),
@@ -121,6 +135,10 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
         categoria: produto.categoria,
         cor: produto.cor,
         modelo: produto.modelo,
+        peso: produto.peso,
+        largura: produto.largura,
+        altura: produto.altura,
+        comprimento: produto.comprimento,
       };
 
       await Promise.race([
@@ -185,6 +203,20 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
         return res.status(400).json({ erro: 'Modelo inválido' });
       }
 
+      // Validação das novas dimensões
+      if (produto.peso != null && produto.peso <= 0) {
+        return res.status(400).json({ erro: 'Peso inválido' });
+      }
+      if (produto.largura != null && produto.largura <= 0) {
+        return res.status(400).json({ erro: 'Largura inválida' });
+      }
+      if (produto.altura != null && produto.altura <= 0) {
+        return res.status(400).json({ erro: 'Altura inválida' });
+      }
+      if (produto.comprimento != null && produto.comprimento <= 0) {
+        return res.status(400).json({ erro: 'Comprimento inválido' });
+      }
+
       // Upload da imagem (opcional)
       const image = await Promise.race([
         uploadImagemCosmic(req),
@@ -203,6 +235,10 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
         categoria: produto.categoria ?? produtoExistente.categoria,
         cor: produto.cor ?? produtoExistente.cor,
         modelo: produto.modelo ?? produtoExistente.modelo,
+        peso: produto.peso ?? produtoExistente.peso,
+        largura: produto.largura ?? produtoExistente.largura,
+        altura: produto.altura ?? produtoExistente.altura,
+        comprimento: produto.comprimento ?? produtoExistente.comprimento,
       };
 
       await Promise.race([

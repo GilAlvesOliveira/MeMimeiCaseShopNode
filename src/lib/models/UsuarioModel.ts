@@ -8,6 +8,7 @@ export interface IUsuario extends Document {
   role: 'admin' | 'customer';
   telefone?: string;
   endereco?: string;
+  cep?: string;  // Novo campo para o CEP de destino
 }
 
 const UsuarioSchema = new Schema<IUsuario>({
@@ -18,6 +19,7 @@ const UsuarioSchema = new Schema<IUsuario>({
   role: { type: String, enum: ['admin', 'customer'], default: 'customer' },
   telefone: { type: String },
   endereco: { type: String },
+  cep: { type: String, required: false },  // Adicionando o campo cep para o cliente
 });
 
 export const UsuarioModel =

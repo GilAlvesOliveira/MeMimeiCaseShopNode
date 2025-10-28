@@ -10,6 +10,10 @@ export interface IProduto extends Document {
   categoria: string;
   cor: string;
   modelo: string;
+  peso?: number; // Peso do produto (em kg)
+  largura?: number; // Largura do produto (em cm)
+  altura?: number; // Altura do produto (em cm)
+  comprimento?: number; // Comprimento do produto (em cm)
 }
 
 const ProdutoSchema = new Schema<IProduto>({
@@ -21,6 +25,10 @@ const ProdutoSchema = new Schema<IProduto>({
   categoria: { type: String, required: true },
   cor: { type: String, required: true },
   modelo: { type: String, required: true },
+  peso: { type: Number }, // Novo campo peso
+  largura: { type: Number }, // Novo campo largura
+  altura: { type: Number }, // Novo campo altura
+  comprimento: { type: Number }, // Novo campo comprimento
 });
 
 export const ProdutoModel = mongoose.models.Produto || mongoose.model<IProduto>('produtos', ProdutoSchema);
