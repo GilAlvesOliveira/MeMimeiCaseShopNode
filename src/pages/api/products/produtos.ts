@@ -30,11 +30,14 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
       if (typeof q === 'string' && q.trim().length > 0) {
         const term = q.trim();
         filtro.$or = [
-          { nome:      { $regex: term, $options: 'i' } },
-          { modelo:    { $regex: term, $options: 'i' } },
-          { categoria: { $regex: term, $options: 'i' } },
-          { cor:       { $regex: term, $options: 'i' } },
-          { descricao: { $regex: term, $options: 'i' } },
+          { nome:        { $regex: term, $options: 'i' } },
+          { modelo:      { $regex: term, $options: 'i' } },
+          { categoria:   { $regex: term, $options: 'i' } },
+          { cor:         { $regex: term, $options: 'i' } },
+          { altura:      { $regex: term, $options: 'i' } },
+          { peso:        { $regex: term, $options: 'i' } },
+          { largura:     { $regex: term, $options: 'i' } },
+          { comprimento: { $regex: term, $options: 'i' } },
         ];
       }
 
@@ -104,16 +107,16 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
       }
 
       // Validação das novas dimensões
-      if (produto.peso != null && produto.peso <= 0) {
+      if (!produto.peso || produto.peso <= 0) {
         return res.status(400).json({ erro: 'Peso inválido' });
       }
-      if (produto.largura != null && produto.largura <= 0) {
+      if (!produto.largura || produto.largura <= 0) {
         return res.status(400).json({ erro: 'Largura inválida' });
       }
-      if (produto.altura != null && produto.altura <= 0) {
+      if (!produto.altura || produto.altura <= 0) {
         return res.status(400).json({ erro: 'Altura inválida' });
       }
-      if (produto.comprimento != null && produto.comprimento <= 0) {
+      if (!produto.comprimento || produto.comprimento <= 0) {
         return res.status(400).json({ erro: 'Comprimento inválido' });
       }
 
@@ -202,18 +205,16 @@ const handler = nc<ProdutoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>(
       if (produto.modelo != null && produto.modelo.length < 2) {
         return res.status(400).json({ erro: 'Modelo inválido' });
       }
-
-      // Validação das novas dimensões
-      if (produto.peso != null && produto.peso <= 0) {
+      if (produto.peso != null && produto.peso < 0) {
         return res.status(400).json({ erro: 'Peso inválido' });
       }
-      if (produto.largura != null && produto.largura <= 0) {
+      if (produto.largura != null && produto.largura < 0) {
         return res.status(400).json({ erro: 'Largura inválida' });
       }
-      if (produto.altura != null && produto.altura <= 0) {
+      if (produto.altura != null && produto.altura < 0) {
         return res.status(400).json({ erro: 'Altura inválida' });
       }
-      if (produto.comprimento != null && produto.comprimento <= 0) {
+      if (produto.comprimento != null && produto.comprimento < 0) {
         return res.status(400).json({ erro: 'Comprimento inválido' });
       }
 
