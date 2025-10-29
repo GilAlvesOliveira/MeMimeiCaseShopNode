@@ -19,18 +19,22 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
   try {
     if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-    const { totalFrete } = req.body; // Aqui estamos pegando o valor do frete enviado do frontend
+    const { totalFrete } = req.body; // Valor do frete enviado do frontend
 
-    const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
+    if (totalFrete === undefined) {
+      return res.status(400).json({ erro: 'O valor do frete é necessário' });
+    }
+
+    const carrinho = await CarrinhoModel.findOne({ usuarioId: req.user.id }) as ICarrinho | null;
     if (!carrinho || carrinho.produtos.length === 0) {
       return res.status(400).json({ erro: 'Carrinho vazio' });
     }
 
-    const produtos = (await ProdutoModel.find({
+    const produtos = await ProdutoModel.find({
       _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
-    })) as IProduto[];
+    }) as IProduto[];
 
-    // VALIDAÇÃO DE ESTOQUE (para cada item do carrinho)
+    // VALIDAÇÃO DE ESTOQUE
     for (const item of carrinho.produtos) {
       const prod = produtos.find((pp) => pp._id.toString() === item.produtoId);
       if (!prod) {
