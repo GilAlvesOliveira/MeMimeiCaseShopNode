@@ -21,8 +21,9 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
         const { frete } = req.body;  // Recebe o valor do frete do corpo da requisição
         console.log("[Backend] Valor do frete recebido:", frete);  // Log para verificar o valor do frete
 
-        // Converte o frete para número, se necessário
+        // Tente forçar a conversão do valor para número e logue o resultado
         const freteNumerico = parseFloat(frete);  // Força a conversão para número
+        console.log("[Backend] Valor do frete convertido:", freteNumerico); // Log para verificar a conversão
 
         // Verifica se o valor do frete é válido
         if (isNaN(freteNumerico) || freteNumerico < 0) {
