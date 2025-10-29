@@ -15,90 +15,71 @@ interface PedidoApiRequest extends NextApiRequest {
 
 const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
     .post(async (req, res) => {
-    try {
-        if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
+  try {
+    if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-        const { frete } = req.body;  // Recebe o valor do frete do corpo da requisição
-        console.log("[Backend] Valor do frete recebido:", frete);  // Log para verificar o valor do frete
+    const { frete } = req.body;
+    console.log("[Backend] Valor do frete recebido:", frete); // Adicionar log do valor recebido
 
-        // Tente forçar a conversão do valor para número e logue o resultado
-        const freteNumerico = parseFloat(frete);  // Força a conversão para número
-        console.log("[Backend] Valor do frete convertido:", freteNumerico); // Log para verificar a conversão
+    // Forçar a conversão para número (logar o tipo e o valor)
+    const freteNumerico = parseFloat(frete);
+    console.log("[Backend] Valor do frete convertido:", freteNumerico);
 
-        // Verifica se o valor do frete é válido
-        if (isNaN(freteNumerico) || freteNumerico < 0) {
-            return res.status(400).json({ erro: 'Valor de frete inválido' });
-        }
-
-        // O restante da lógica para criar o pedido
-        const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
-        if (!carrinho || carrinho.produtos.length === 0) {
-            return res.status(400).json({ erro: 'Carrinho vazio' });
-        }
-
-        const produtos = (await ProdutoModel.find({
-            _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
-        })) as IProduto[];
-
-        // VALIDAÇÃO DE ESTOQUE (para cada item do carrinho)
-        for (const item of carrinho.produtos) {
-            const prod = produtos.find((pp) => pp._id.toString() === item.produtoId);
-            if (!prod) {
-                return res.status(400).json({ erro: `Produto ${item.produtoId} não encontrado` });
-            }
-            const estoqueAtual = Number(prod.estoque ?? 0) || 0;
-            if (estoqueAtual <= 0) {
-                return res.status(400).json({ erro: `Produto "${prod.nome}" está esgotado` });
-            }
-            if (item.quantidade > estoqueAtual) {
-                return res.status(400).json({
-                    erro: `Quantidade de "${prod.nome}" indisponível (em estoque: ${estoqueAtual})`,
-                });
-            }
-        }
-
-        const totalProdutos = carrinho.produtos.reduce((sum, p) => {
-            const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
-            return sum + (prod?.preco || 0) * p.quantidade;
-        }, 0);
-
-        console.log("[Backend] Total dos produtos:", totalProdutos);  // Log para depuração
-
-        // Agora somamos o valor do frete ao total dos produtos
-        const total = totalProdutos + freteNumerico;
-        console.log("[Backend] Total com frete:", total);  // Log para depuração
-
-        const pedido = {
-            usuarioId: req.user.id,
-            produtos: carrinho.produtos.map((p) => {
-                const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
-                return {
-                    produtoId: p.produtoId,
-                    quantidade: p.quantidade,
-                    precoUnitario: prod?.preco || 0,
-                };
-            }),
-            total, // O total agora inclui o valor do frete
-            status: 'pendente',
-            criadoEm: new Date(),
-            enviado: false,
-            enviadoEm: null,
-        };
-
-        const novo = (await PedidoModel.create(pedido)) as IPedido;
-
-        // Esvazia o carrinho após a criação do pedido
-        await CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] });
-
-        return res.status(200).json({
-            msg: 'Pedido criado com sucesso',
-            pedidoId: novo._id,
-            total,
-        });
-    } catch (e) {
-        console.error('Erro ao criar pedido:', e);
-        return res.status(500).json({ erro: 'Erro ao criar pedido' });
+    // Verificar se o frete é válido
+    if (isNaN(freteNumerico) || freteNumerico <= 0) {
+      return res.status(400).json({ erro: 'Valor de frete inválido' });
     }
+
+    // Continuar com a lógica de criação do pedido
+    const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
+    if (!carrinho || carrinho.produtos.length === 0) {
+      return res.status(400).json({ erro: 'Carrinho vazio' });
+    }
+
+    const produtos = (await ProdutoModel.find({
+      _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
+    })) as IProduto[];
+
+    const totalProdutos = carrinho.produtos.reduce((sum, p) => {
+      const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
+      return sum + (prod?.preco || 0) * p.quantidade;
+    }, 0);
+
+    console.log("[Backend] Total dos produtos:", totalProdutos);
+
+    const total = totalProdutos + freteNumerico;  // Somando o valor do frete ao total
+    console.log("[Backend] Total com frete:", total);
+
+    const pedido = {
+      usuarioId: req.user.id,
+      produtos: carrinho.produtos.map((p) => {
+        const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
+        return {
+          produtoId: p.produtoId,
+          quantidade: p.quantidade,
+          precoUnitario: prod?.preco || 0,
+        };
+      }),
+      total, // Total com frete
+      status: 'pendente',
+      criadoEm: new Date(),
+      enviado: false,
+      enviadoEm: null,
+    };
+
+    const novo = (await PedidoModel.create(pedido)) as IPedido;
+
+    await CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] });
+
+    return res.status(200).json({
+      msg: 'Pedido criado com sucesso',
+      pedidoId: novo._id,
+      total,
+    });
+  } catch (e) {
+    console.error('Erro ao criar pedido:', e);
+    return res.status(500).json({ erro: 'Erro ao criar pedido' });
+  }
 })
     .get(async (req, res) => {
         try {
