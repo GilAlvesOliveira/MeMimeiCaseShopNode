@@ -14,13 +14,13 @@ interface PedidoApiRequest extends NextApiRequest {
 }
 
 const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
-   .post(async (req, res) => {
+    .post(async (req, res) => {
     try {
         if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-        // Obter o valor do frete do corpo da requisição
-        const { frete } = req.body;
-        
+        const { frete } = req.body; // Recebe o valor do frete do corpo da requisição
+
+        // Verifica se o valor do frete é válido
         if (typeof frete !== 'number' || frete < 0) {
             return res.status(400).json({ erro: 'Valor de frete inválido' });
         }
@@ -51,6 +51,15 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
             }
         }
 
+        const totalProdutos = carrinho.produtos.reduce((sum, p) => {
+            const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
+            return sum + (prod?.preco || 0) * p.quantidade;
+        }, 0);
+
+        // Agora somamos o valor do frete ao total dos produtos
+        const total = totalProdutos + frete;
+
+        // Criação do pedido
         const pedido = {
             usuarioId: req.user.id,
             produtos: carrinho.produtos.map((p) => {
@@ -61,10 +70,7 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
                     precoUnitario: prod?.preco || 0,
                 };
             }),
-            total: carrinho.produtos.reduce((sum, p) => {
-                const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
-                return sum + (prod?.preco || 0) * p.quantidade;
-            }, 0) + frete, // Adicionando o valor do frete ao total
+            total, // O total agora inclui o valor do frete
             status: 'pendente',
             criadoEm: new Date(),
             enviado: false,
@@ -73,12 +79,13 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
         const novo = (await PedidoModel.create(pedido)) as IPedido;
 
+        // Esvazia o carrinho após a criação do pedido
         await CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] });
 
         return res.status(200).json({
             msg: 'Pedido criado com sucesso',
             pedidoId: novo._id,
-            total: pedido.total, // Retornando o total com o frete
+            total,
         });
     } catch (e) {
         console.error('Erro ao criar pedido:', e);
