@@ -18,14 +18,15 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
     try {
         if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-        const { frete } = req.body; // Recebe o valor do frete
-        console.log("[Backend] Valor do frete recebido:", frete); // Log para verificar o valor do frete
+        const { frete } = req.body;  // Recebe o valor do frete do corpo da requisição
+        console.log("[Backend] Valor do frete recebido:", frete);  // Log para depuração
 
         // Verifica se o valor do frete é válido
         if (typeof frete !== 'number' || frete < 0) {
             return res.status(400).json({ erro: 'Valor de frete inválido' });
         }
 
+        // O restante da lógica para criar o pedido
         const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
         if (!carrinho || carrinho.produtos.length === 0) {
             return res.status(400).json({ erro: 'Carrinho vazio' });
@@ -57,11 +58,11 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
             return sum + (prod?.preco || 0) * p.quantidade;
         }, 0);
 
-        console.log("[Backend] Total dos produtos:", totalProdutos); // Verifique o total dos produtos antes de somar o frete
+        console.log("[Backend] Total dos produtos:", totalProdutos);  // Log para depuração
 
         // Agora somamos o valor do frete ao total dos produtos
         const total = totalProdutos + frete;
-        console.log("[Backend] Total com frete:", total); // Verifique o total com frete
+        console.log("[Backend] Total com frete:", total);  // Log para depuração
 
         const pedido = {
             usuarioId: req.user.id,
