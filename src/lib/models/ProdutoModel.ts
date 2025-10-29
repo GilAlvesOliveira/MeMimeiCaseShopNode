@@ -14,6 +14,7 @@ export interface IProduto extends Document {
   largura: number;           // Novo campo largura
   altura: number;            // Novo campo altura
   comprimento: number;       // Novo campo comprimento
+  frete?: number;            // Caso queira salvar o frete calculado aqui
 }
 
 const ProdutoSchema = new Schema<IProduto>({
@@ -29,6 +30,7 @@ const ProdutoSchema = new Schema<IProduto>({
   largura: { type: Number, required: true }, // Campo obrigatório
   altura: { type: Number, required: true },  // Campo obrigatório
   comprimento: { type: Number, required: true }, // Campo obrigatório
+  frete: { type: Number }, // Novo campo para armazenar o valor do frete (se desejado)
 });
 
 export const ProdutoModel = mongoose.models.Produto || mongoose.model<IProduto>('produtos', ProdutoSchema);

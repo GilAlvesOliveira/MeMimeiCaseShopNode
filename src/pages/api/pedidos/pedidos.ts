@@ -95,62 +95,74 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
   }
 })
     .get(async (req, res) => {
-        try {
-            if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
+    try {
+        if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-            const isAdmin = String(req.user.role || '').toLowerCase() === 'admin';
-            const filtro = isAdmin ? {} : { usuarioId: req.user.id };
+        const isAdmin = String(req.user.role || '').toLowerCase() === 'admin';
+        const filtro = isAdmin ? {} : { usuarioId: req.user.id };
 
-            const pedidos = (await PedidoModel.find(filtro).sort({ criadoEm: -1 })) as IPedido[];
+        const pedidos = (await PedidoModel.find(filtro).sort({ criadoEm: -1 })) as IPedido[];
 
-            const usuarioIds = Array.from(new Set(pedidos.map((p) => p.usuarioId)));
-            const usuarios = await UsuarioModel.find({ _id: { $in: usuarioIds } });
-            const userMap = new Map(usuarios.map((u) => [u._id.toString(), u]));
+        const usuarioIds = Array.from(new Set(pedidos.map((p) => p.usuarioId)));
+        const usuarios = await UsuarioModel.find({ _id: { $in: usuarioIds } });
+        const userMap = new Map(usuarios.map((u) => [u._id.toString(), u]));
 
-            const produtoIds = Array.from(
-                new Set(pedidos.flatMap((p) => p.produtos.map((i) => i.produtoId)))
-            );
-            const prods = await ProdutoModel.find({ _id: { $in: produtoIds } });
-            const prodMap = new Map(prods.map((x) => [x._id.toString(), x]));
+        const produtoIds = Array.from(
+            new Set(pedidos.flatMap((p) => p.produtos.map((i) => i.produtoId)))
+        );
+        const prods = await ProdutoModel.find({ _id: { $in: produtoIds } });
+        const prodMap = new Map(prods.map((x) => [x._id.toString(), x]));
 
-            const resp = pedidos.map((p) => ({
-                _id: p._id,
-                usuarioId: p.usuarioId,
-                usuarioInfo: (() => {
-                    const u: any = userMap.get(p.usuarioId);
-                    if (!u) return {};
-                    return {
-                        nome: u.nome,
-                        email: u.email,
-                        telefone: u.telefone || '',
-                        endereco: u.endereco || '',
-                    };
-                })(),
-                produtos: p.produtos.map((it) => {
-                    const pd: any = prodMap.get(it.produtoId);
-                    return {
-                        produtoId: it.produtoId,
-                        quantidade: it.quantidade,
-                        precoUnitario: it.precoUnitario,
-                        nome: pd?.nome || undefined,
-                        modelo: pd?.modelo || undefined,
-                        cor: pd?.cor || undefined,
-                        imagem: pd?.imagem || undefined,
-                    };
-                }),
-                total: p.total,
-                status: p.status,
-                criadoEm: p.criadoEm,
-                enviado: p.enviado || false,
-                enviadoEm: p.enviadoEm || null,
-            }));
-
-            return res.status(200).json(resp);
-        } catch (e) {
-            console.error('Erro ao listar pedidos:', e);
-            return res.status(500).json({ erro: 'Erro ao listar pedidos' });
+        // Lógica para verificar e atualizar o status de pedidos pendentes há mais de 24 horas
+        const now = new Date();
+        for (let pedido of pedidos) {
+            if (pedido.status === "pendente" && new Date(pedido.criadoEm).getTime() < now.getTime() - 24 * 60 * 60 * 1000) {
+                pedido.status = "cancelado";  // Atualiza o status para "cancelado"
+                await pedido.save(); // Salva a alteração do status
+            }
         }
-    })
+
+        // Organiza a resposta com informações detalhadas
+        const resp = pedidos.map((p) => ({
+            _id: p._id,
+            usuarioId: p.usuarioId,
+            usuarioInfo: (() => {
+                const u: any = userMap.get(p.usuarioId);
+                if (!u) return {};
+                return {
+                    nome: u.nome,
+                    email: u.email,
+                    telefone: u.telefone || '',
+                    endereco: u.endereco || '',
+                };
+            })(),
+            produtos: p.produtos.map((it) => {
+                const pd: any = prodMap.get(it.produtoId);
+                return {
+                    produtoId: it.produtoId,
+                    quantidade: it.quantidade,
+                    precoUnitario: it.precoUnitario,
+                    nome: pd?.nome || undefined,
+                    modelo: pd?.modelo || undefined,
+                    cor: pd?.cor || undefined,
+                    imagem: pd?.imagem || undefined,
+                };
+            }),
+            total: p.total,
+            frete: p.frete || 0, // Exibindo o valor do frete
+            status: p.status,
+            criadoEm: p.criadoEm,
+            enviado: p.enviado || false,
+            enviadoEm: p.enviadoEm || null,
+        }));
+
+        return res.status(200).json(resp);
+    } catch (e) {
+        console.error('Erro ao listar pedidos:', e);
+        return res.status(500).json({ erro: 'Erro ao listar pedidos' });
+    }
+})
+
 
     .put(async (req, res) => {
         try {
