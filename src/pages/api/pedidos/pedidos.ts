@@ -16,10 +16,13 @@ interface PedidoApiRequest extends NextApiRequest {
 const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
     .post(async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
+    if (!req.user) {
+      return res.status(401).json({ erro: 'Usuário não autenticado' });
+    }
 
+    // Recebe o valor do frete da requisição
     const { frete } = req.body;
-    console.log("[Backend] Valor do frete recebido:", frete); // Adicionar log do valor recebido
+    console.log("[Backend] Valor do frete recebido:", frete); // Log do valor recebido
 
     // Forçar a conversão para número (logar o tipo e o valor)
     const freteNumerico = parseFloat(frete);
@@ -30,16 +33,20 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
       return res.status(400).json({ erro: 'Valor de frete inválido' });
     }
 
-    // Continuar com a lógica de criação do pedido
+    // Buscar o carrinho do usuário
     const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
     if (!carrinho || carrinho.produtos.length === 0) {
       return res.status(400).json({ erro: 'Carrinho vazio' });
     }
 
+    // Buscar os produtos no carrinho
     const produtos = (await ProdutoModel.find({
       _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
     })) as IProduto[];
 
+    console.log("[Backend] Produtos encontrados no carrinho:", produtos);
+
+    // Calcular o total dos produtos no carrinho
     const totalProdutos = carrinho.produtos.reduce((sum, p) => {
       const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
       return sum + (prod?.preco || 0) * p.quantidade;
@@ -47,9 +54,11 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
     console.log("[Backend] Total dos produtos:", totalProdutos);
 
-    const total = totalProdutos + freteNumerico;  // Somando o valor do frete ao total
+    // Calcular o total final somando o valor do frete
+    const total = totalProdutos + freteNumerico;
     console.log("[Backend] Total com frete:", total);
 
+    // Criar o objeto do pedido
     const pedido = {
       usuarioId: req.user.id,
       produtos: carrinho.produtos.map((p) => {
@@ -61,20 +70,24 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
         };
       }),
       total, // Total com frete
+      frete: freteNumerico, // Salvando o valor do frete também
       status: 'pendente',
       criadoEm: new Date(),
       enviado: false,
       enviadoEm: null,
     };
 
+    // Criar o pedido no banco
     const novo = (await PedidoModel.create(pedido)) as IPedido;
 
+    // Limpar o carrinho após o pedido ser criado
     await CarrinhoModel.updateOne({ _id: carrinho._id }, { produtos: [] });
 
     return res.status(200).json({
       msg: 'Pedido criado com sucesso',
       pedidoId: novo._id,
       total,
+      frete: freteNumerico,  // Retornando o valor do frete também
     });
   } catch (e) {
     console.error('Erro ao criar pedido:', e);
