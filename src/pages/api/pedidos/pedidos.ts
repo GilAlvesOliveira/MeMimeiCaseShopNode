@@ -19,10 +19,13 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
         if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
         const { frete } = req.body;  // Recebe o valor do frete do corpo da requisição
-        console.log("[Backend] Valor do frete recebido:", frete);  // Log para depuração
+        console.log("[Backend] Valor do frete recebido:", frete);  // Log para verificar o valor do frete
+
+        // Converte o frete para número, se necessário
+        const freteNumerico = parseFloat(frete);  // Força a conversão para número
 
         // Verifica se o valor do frete é válido
-        if (typeof frete !== 'number' || frete < 0) {
+        if (isNaN(freteNumerico) || freteNumerico < 0) {
             return res.status(400).json({ erro: 'Valor de frete inválido' });
         }
 
@@ -61,7 +64,7 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
         console.log("[Backend] Total dos produtos:", totalProdutos);  // Log para depuração
 
         // Agora somamos o valor do frete ao total dos produtos
-        const total = totalProdutos + frete;
+        const total = totalProdutos + freteNumerico;
         console.log("[Backend] Total com frete:", total);  // Log para depuração
 
         const pedido = {
