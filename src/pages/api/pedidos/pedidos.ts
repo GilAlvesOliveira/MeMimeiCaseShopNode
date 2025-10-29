@@ -15,17 +15,11 @@ interface PedidoApiRequest extends NextApiRequest {
 
 const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
 
-  // Alteração no backend (pedido.ts)
 .post(async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-    // Obtém o valor do frete da requisição
-    const { valorFrete } = req.body;
-    if (valorFrete === undefined) {
-      return res.status(400).json({ erro: 'Valor do frete não informado' });
-    }
-
+    const { totalComFrete } = req.body;  // Agora estamos esperando o total com o frete
     const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
     if (!carrinho || carrinho.produtos.length === 0) {
       return res.status(400).json({ erro: 'Carrinho vazio' });
@@ -35,7 +29,7 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
       _id: { $in: carrinho.produtos.map((p) => p.produtoId) },
     })) as IProduto[];
 
-    // VALIDAÇÃO DE ESTOQUE
+    // VALIDAÇÃO DE ESTOQUE (para cada item do carrinho)
     for (const item of carrinho.produtos) {
       const prod = produtos.find((pp) => pp._id.toString() === item.produtoId);
       if (!prod) {
@@ -52,14 +46,7 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
       }
     }
 
-    // Cálculo do total do pedido incluindo o valor do frete
-    const totalProdutos = carrinho.produtos.reduce((sum, p) => {
-      const prod = produtos.find((pp) => pp._id.toString() === p.produtoId);
-      return sum + (prod?.preco || 0) * p.quantidade;
-    }, 0);
-
-    const total = totalProdutos + valorFrete; // Soma do valor dos produtos com o frete
-
+    // Atualizar a lógica do pedido para usar o total com frete
     const pedido = {
       usuarioId: req.user.id,
       produtos: carrinho.produtos.map((p) => {
@@ -70,7 +57,7 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
           precoUnitario: prod?.preco || 0,
         };
       }),
-      total,
+      total: totalComFrete,  // Usando o total com frete
       status: 'pendente',
       criadoEm: new Date(),
       enviado: false,
