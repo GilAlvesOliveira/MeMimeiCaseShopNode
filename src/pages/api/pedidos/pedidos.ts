@@ -19,7 +19,8 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
   try {
     if (!req.user) return res.status(401).json({ erro: 'Usuário não autenticado' });
 
-    const { totalComFrete } = req.body;  // Agora estamos esperando o total com o frete
+    const { totalComFrete } = req.body;  // Agora estamos esperando o total com frete
+
     const carrinho = (await CarrinhoModel.findOne({ usuarioId: req.user.id })) as ICarrinho | null;
     if (!carrinho || carrinho.produtos.length === 0) {
       return res.status(400).json({ erro: 'Carrinho vazio' });
@@ -46,7 +47,7 @@ const handler = nc<PedidoApiRequest, NextApiResponse<RespostaPadraoMsg | any>>()
       }
     }
 
-    // Atualizar a lógica do pedido para usar o total com frete
+    // Atualizando a lógica do pedido para usar o total com frete
     const pedido = {
       usuarioId: req.user.id,
       produtos: carrinho.produtos.map((p) => {
